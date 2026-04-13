@@ -2,6 +2,10 @@
 // Syftet är att sammanställa alla varabelvärden i scenariet.
 // Variabelnamn har satts för att försöka överensstämma med exempelkoden.
 // Klassen Tank är minimal och skickas mer med som koncept(anrop/states/vektorer).
+final int CANVAS_HEIGHT = 800;
+final int CANVAS_WIDTH = 800;
+
+int selectedAlgorithm = 0;
 
 boolean left, right, up, down;
 boolean mouse_pressed;
@@ -12,19 +16,17 @@ PVector tree1_pos, tree2_pos, tree3_pos;
 Tree[] allTrees   = new Tree[3];
 Tank[] allTanks   = new Tank[6];
 
-// Team0
-color team0Color;
-PVector team0_tank0_startpos;
-PVector team0_tank1_startpos;
-PVector team0_tank2_startpos;
-Tank tank0, tank1, tank2;
+Tank tank0;
+Tank tank1;
+Tank tank2;
+Tank tank3;
+Tank tank4;
+Tank tank5;
 
-// Team1
-color team1Color;
-PVector team1_tank0_startpos;
-PVector team1_tank1_startpos;
-PVector team1_tank2_startpos;
-Tank tank3, tank4, tank5;
+Team team0;
+Team team1;
+
+Agent agent0;
 
 int tank_size;
 
@@ -35,10 +37,10 @@ boolean pause;
 void setup()
 {
   size(800, 800);
+
   up             = false;
   down           = false;
   mouse_pressed  = false;
-
   gameOver       = false;
   pause          = true;
 
@@ -48,28 +50,23 @@ void setup()
   tree2_pos = new PVector(280, 230);
   tree3_pos = new PVector(530, 520);
 
+  allTrees[0] = new Tree(tree_img, (int)tree1_pos.x, (int)tree1_pos.y);
+  allTrees[1] = new Tree(tree_img, (int)tree2_pos.x, (int)tree2_pos.y);
+  allTrees[2] = new Tree(tree_img, (int)tree3_pos.x, (int)tree3_pos.y);
+
   tank_size = 50;
 
-  // Team0
-  team0Color  = color(204, 50, 50);             // Base Team 0(red)
-  team0_tank0_startpos  = new PVector(50, 50);
-  team0_tank1_startpos  = new PVector(50, 150);
-  team0_tank2_startpos  = new PVector(50, 250);
-
-  // Team1
-  team1Color  = color(0, 150, 200);             // Base Team 1(blue)
-  team1_tank0_startpos  = new PVector(width-50, height-250);
-  team1_tank1_startpos  = new PVector(width-50, height-150);
-  team1_tank2_startpos  = new PVector(width-50, height-50);
+  team0 = new Team(0);
+  team1 = new Team(1);
 
   //tank0_startpos = new PVector(50, 50);
-  tank0 = new Tank("tank0", team0_tank0_startpos, tank_size, team0Color);
-  tank1 = new Tank("tank1", team0_tank1_startpos, tank_size, team0Color);
-  tank2 = new Tank("tank2", team0_tank2_startpos, tank_size, team0Color);
+  tank0 = new Tank("tank0", team0.tank0_startpos, tank_size, team0);
+  tank1 = new Tank("tank1", team0.tank1_startpos, tank_size, team0);
+  tank2 = new Tank("tank2", team0.tank2_startpos, tank_size, team0);
 
-  tank3 = new Tank("tank3", team1_tank0_startpos, tank_size, team1Color);
-  tank4 = new Tank("tank4", team1_tank1_startpos, tank_size, team1Color);
-  tank5 = new Tank("tank5", team1_tank2_startpos, tank_size, team1Color);
+  Tank tank3 = new Tank("tank3", team1.tank0_startpos, tank_size, team1);
+  tank4 = new Tank("tank4", team1.tank1_startpos, tank_size, team1);
+  tank5 = new Tank("tank5", team1.tank2_startpos, tank_size, team1);
 
   allTanks[0] = tank0;                         // Symbol samma som index!
   allTanks[1] = tank1;
@@ -77,12 +74,15 @@ void setup()
   allTanks[3] = tank3;
   allTanks[4] = tank4;
   allTanks[5] = tank5;
+
+  agent0 = new Agent(tank0);
+  agent0.start();
 }
 
 void draw()
 {
   background(200);
-  checkForInput(); // Kontrollera inmatning.
+  // checkForInput(); // Kontrollera inmatning.
 
   if (!gameOver && !pause) {
 
@@ -109,16 +109,16 @@ void checkForInput() {
       tank0.state=1; // moveForward
     }
   } else
-  if (down) {
-    if (!pause && !gameOver) {
-      tank0.state=2; // moveBackward
+    if (down) {
+      if (!pause && !gameOver) {
+        tank0.state=2; // moveBackward
+      }
     }
-  }
 
   if (right) {
   } else
-  if (left) {
-  }
+    if (left) {
+    }
 
   if (!up && !down) {
     tank0.state=0;
@@ -135,21 +135,30 @@ void updateTanksLogic() {
 void checkForCollisions() {
   //println("*** checkForCollisions()");
   for (Tank tank : allTanks) {
-    tank.checkForCollisions(tank1);
-    tank.checkForCollisions(new PVector(width, height));
+    if (tank == null) continue;
+
+    for (Tree tree : allTrees) {
+      if (tree != null) {
+        tank.resolveCollisionWithTree(tree);
+      }
+    }
+
+    for (Tank otherTank : allTanks) {
+      if (otherTank != null && tank != otherTank) {
+        tank.resolveCollisionWithTank(otherTank);
+      }
+    }
+
+    tank.checkBoundaries(CANVAS_WIDTH, CANVAS_HEIGHT);
   }
+
 }
 
-//======================================
-// Följande bör ligga i klassen Team
 void displayHomeBase() {
-  strokeWeight(1);
-
-  fill(team0Color, 15);    // Base Team 0(red)
-  rect(0, 0, 150, 350);
-
-  fill(team1Color, 15);    // Base Team 1(blue)
-  rect(width - 151, height - 351, 150, 350);
+  if (team0 != null && team1 != null) {
+    team0.displayHomeBase();
+    team1.displayHomeBase();
+  }
 }
 
 // Följande bör ligga i klassen Tree
@@ -171,7 +180,7 @@ void displayGUI() {
   if (pause) {
     textSize(36);
     fill(30);
-    text("...Paused! (\'p\'-continues)\n(upp/ner-change velocity)", width/1.7-100, height/2.5);
+    text("Game paused!\nPress \'1\' to use A* for pathfinding\nPress \'2\' to use Greedy Best-First Search \nfor pathfinding", width/1.7-350, height/2.5);
   }
 
   if (gameOver) {
@@ -183,7 +192,7 @@ void displayGUI() {
 
 //======================================
 void keyPressed() {
-  System.out.println("keyPressed!");
+//  System.out.println("keyPressed!");
 
   if (key == CODED) {
     switch(keyCode) {
@@ -204,7 +213,7 @@ void keyPressed() {
 }
 
 void keyReleased() {
-  System.out.println("keyReleased!");
+  // System.out.println("keyReleased!");
   if (key == CODED) {
     switch(keyCode) {
     case LEFT:
@@ -224,15 +233,21 @@ void keyReleased() {
     }
   }
 
-  if (key == 'p') {
+  if (key == '1') {
+    selectedAlgorithm = 1;
+    agent0.setAlgorithm(1);
+    pause = !pause;
+  } else if (key == '2') {
+    selectedAlgorithm = 2;
+    agent0.setAlgorithm(2);
     pause = !pause;
   }
 }
 
 // Mousebuttons
 void mousePressed() {
-  println("---------------------------------------------------------");
-  println("*** mousePressed() - Musknappen har tryckts ned.");
+  //println("---------------------------------------------------------");
+//  println("*** mousePressed() - Musknappen har tryckts ned.");
 
   mouse_pressed = true;
 }

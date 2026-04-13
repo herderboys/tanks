@@ -1,4 +1,4 @@
-class Tree extends Sprite {
+class Tree extends TankSprite {
   
   PVector position;
   String  name; 
@@ -17,9 +17,7 @@ class Tree extends Sprite {
 
   //**************************************************
   
-  void checkCollision() {
-    
-  }
+
 
   //**************************************************  
   void display() {
