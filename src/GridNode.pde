@@ -1,3 +1,5 @@
+// Namn: Alexander Herder, alhe5785
+
 class Node implements Comparable<Node> {
   int gridX;
   int gridY;
@@ -7,7 +9,10 @@ class Node implements Comparable<Node> {
   volatile boolean isWalkable;
   volatile boolean isExplored;
 
+  // g(n), the exact cost of the path from starting node to this node
   float gCost = Float.MAX_VALUE;
+  
+  // f(n), the (heuristic) estimated cost from this node to the target node
   float hCost;
   Node parent;
 
@@ -22,6 +27,7 @@ class Node implements Comparable<Node> {
     centerY = y;
   }
 
+  // g(n) + f(n), the total estimated cost of the path through this node
   float fCost() {
     return gCost + hCost;
   }

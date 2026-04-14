@@ -1,3 +1,5 @@
+// Namn: Alexander Herder, alhe5785
+
 class Tank extends TankSprite {
 
   PVector acceleration;
@@ -147,7 +149,7 @@ class Tank extends TankSprite {
       float dx = (pos.x - tree.position.x) / d;
       float dy = (pos.y - tree.position.y) / d;
 
-      // update coordinates to resolve overlap
+      // update coordinates to resolve overlap by pushing tank exactly out of collision zone
       pos.x += dx * overlap;
       pos.y += dy * overlap;
 

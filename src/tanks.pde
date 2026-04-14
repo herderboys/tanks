@@ -1,7 +1,5 @@
-// Följande kan användas som bas inför uppgiften.
-// Syftet är att sammanställa alla varabelvärden i scenariet.
-// Variabelnamn har satts för att försöka överensstämma med exempelkoden.
-// Klassen Tank är minimal och skickas mer med som koncept(anrop/states/vektorer).
+// Namn: Alexander Herder, alhe5785
+
 final int CANVAS_HEIGHT = 800;
 final int CANVAS_WIDTH = 800;
 
@@ -236,11 +234,19 @@ void keyReleased() {
   if (key == '1') {
     selectedAlgorithm = 1;
     agent0.setAlgorithm(1);
-    pause = !pause;
+    println("Now using A* for pathfinding home.");
+    if (pause == true) {
+      pause = !pause; 
+    }
   } else if (key == '2') {
     selectedAlgorithm = 2;
     agent0.setAlgorithm(2);
-    pause = !pause;
+    println("Now using Greedy Best-First Search for pathfinding home.");
+    if (pause == true) {
+      pause = !pause;
+    }
+  } else if (key == 'p') {
+      pause = !pause;
   }
 }
 

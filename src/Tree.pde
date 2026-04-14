@@ -1,3 +1,5 @@
+// Namn: Alexander Herder, alhe5785
+
 class Tree extends TankSprite {
   
   PVector position;

@@ -1,3 +1,5 @@
+// Namn: Alexander Herder, alhe5785
+
 import java.util.*;
 
 class Agent extends Thread {
@@ -7,7 +9,11 @@ class Agent extends Thread {
 
   private int selectedAlgorithm;
 
+  // horizontal/vertical moves cost 1
   final float ORTHOGONAL_COST = 1.0f;
+
+  // diagonal moves form a right triangle,
+  // so the cost is the hypotenuse (sqrt of 2)
   final float DIAGONAL_COST = (float)Math.sqrt(2);
 
   private long reportStartTime = 0;
@@ -45,6 +51,9 @@ class Agent extends Thread {
         // sensor phase
         if (tank.getState() == 1 || tank.getState() == 3 || tank.getState() == 4) {
 
+          // projecting sensor coordinates ahead of tank by treating its heading as an angle
+          // and the lookAhead distance as the hypotenuse. Multiplying lookAhead by cosine
+          // gives you the X-axis, and sine gives the Y-axis
           float lookAhead = 50.0f;
           float sensorX = pos.x + (float)Math.cos(tank.getHeading()) * lookAhead;
           float sensorY = pos.y + (float)Math.sin(tank.getHeading()) * lookAhead;
@@ -80,8 +89,11 @@ class Agent extends Thread {
               tank.setState(4);
             } else if (hitStatic) {
               if (sensedNode.isWalkable) {
+                // marking nodes containing a tree (static object) as unwalkable
+                // removes it from the search graph, preventing the heuristic
+                // algorithms from finding paths through it
                 sensedNode.isWalkable = false;
-                System.out.println("Mapped geography at Grid[" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+                System.out.println("Mapped an unwalkable Node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
               }
               tank.turn(random((float)Math.PI / 2, (float)Math.PI));
             } else {
@@ -164,10 +176,14 @@ class Agent extends Thread {
                   float deltaX = currentNode.centerX - pos.x;
                   float deltaY = currentNode.centerY - pos.y;
 
+                  // atan2 gives us exact angle to the target node by tanking the
+                  // Y and X differences
                   float desiredHeading = (float)Math.atan2(deltaY, deltaX);
                   float currentHeading = tank.getHeading();
 
-                  // calculate the shortest angular distance
+                  // calculate the shortest angular distance.
+                  // this is done to prevent the tank spinning 270 degrees instead of
+                  // 90 degrees, when possible
                   float angleDiff = desiredHeading - currentHeading;
                   angleDiff = (float)atan2(sin(angleDiff), cos(angleDiff));
 
@@ -264,13 +280,25 @@ class Agent extends Thread {
           continue;
         }
 
+        /*
+          A* evaluates notes using f(n) = g(n) + h(n), where it priotitizes
+          nodes with a lower f(n) value. g(n) is the cost of the taken path so far,
+          h(n) is the estimated path to the goal. This way, it goes in the right
+          direction because of the heuristic, and it remembers the path taken + how
+          much it cost to get there. It can also back out of dead ends because of it
+          tracking gCost.
+        */
         if (selectedAlgorithm == 0 || selectedAlgorithm == 1) {
-          println("Using A* to find path home.");
+          // println("Using A* to find path home.");
           float newMovementCostToNeighbor = currentNode.gCost + getDistance(currentNode, neighbor);
 
           if (newMovementCostToNeighbor < neighbor.gCost || !openSet.contains(neighbor)) {
 
             if (openSet.contains(neighbor)) {
+              // removing node before modifying its values
+              // to ensure the queue re-sorts priority based on
+              // new fCost. This is because PriorityQueue doesn't
+              // automatically re-sort when values change
               openSet.remove(neighbor);
             }
             neighbor.gCost = newMovementCostToNeighbor;
@@ -279,8 +307,15 @@ class Agent extends Thread {
 
             openSet.add(neighbor);
           }
+        /*
+          Greedy Best-First Search (GBFS) evanluates nodes using
+          ONLY the heuristic f(n) = h(n). gCost is set equal to 0 here,
+          since it is never used. Therefore the algorithm has no memory
+          of the path taken so far, making it vulnerable/prone to getting
+          trapped against large "physical" obstacles.
+        */
         } else if (selectedAlgorithm == 2) {
-          println("Using GBFS to find path home.");
+          // println("Using GBFS to find path home.");
           if (!openSet.contains(neighbor)) {
             neighbor.gCost = 0; // nullify distance from start
             neighbor.hCost = getDistance(neighbor, targetNode);

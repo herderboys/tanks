@@ -1,3 +1,5 @@
+// Namn: Alexander Herder, alhe5785
+
 class Grid {
   final int GRID_LENGTH = 800;
   final int NODE_SIDE_LENGTH = 50;

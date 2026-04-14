@@ -1,3 +1,5 @@
+// Namn: Alexander Herder, alhe5785
+
 class Team {
 
   int teamIndex;
