@@ -328,6 +328,9 @@ class Tank extends TankSprite {
   void drawTank(float x, float y) {
     fill(this.col, 50);
 
+    // turns oulines on, keeping them after rendering walked on nodes
+    stroke(0);
+
     ellipse(x, y, 50, 50);
     strokeWeight(1);
     line(x, y, x+25, y);

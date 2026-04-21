@@ -51,4 +51,25 @@ class Grid {
     }
     return neighbors;
   }
+
+  void display() {
+    for (int i = 0; i < cols; i++) {
+      for (int j = 0; j < rows; j++) {
+        Node n = nodes[i][j];
+
+        if (n.isExplored && n.isWalkable) {
+          // transparent green
+          fill(0, 255, 0, 60);
+          // no borders
+          noStroke();
+        
+          // get top left corner of node
+          int x = i * NODE_SIDE_LENGTH;
+          int y = j * NODE_SIDE_LENGTH;
+
+          rect(x, y, NODE_SIDE_LENGTH, NODE_SIDE_LENGTH);
+        }
+      }
+    }
+  }
 }

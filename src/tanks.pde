@@ -91,6 +91,10 @@ void draw()
     checkForCollisions();
   }
 
+  if (agent0 != null) {
+    agent0.displayGrid();
+  }
+
   // UPDATE DISPLAY
   displayHomeBase();
   displayTrees();

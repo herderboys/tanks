@@ -28,8 +28,11 @@ För att starta och testa systemet, följ dessa steg:
 4. Klicka på **Run** (Spela-knappen) uppe till vänster i Processing.
 
 ## Styrning och Interaktion
-När programmet startar är simuleringen **pausad** som standard. Använd tangentbordet för att interagera med och styra AI-agentens logik:
+När programmet startar är simuleringen **pausad**. Använd tangentbordet för att interagera med och styra AI-agentens logik:
 
 * **`1`** : Välj och starta sökning med **A\* (A-Star)**. Algoritmen tar hänsyn till både sträckans kostnad hittills ($g(n)$) och uppskattat avstånd till mål ($h(n)$). (Startar automatiskt simuleringen).
 * **`2`** : Välj och starta sökning med **Greedy Best-First Search (GBFS)**. Algoritmen navigerar enbart utifrån uppskattat avstånd till mål ($h(n)$). (Startar automatiskt simuleringen).
 * **`p`** : Pausa eller återuppta simuleringen manuellt.
+
+## Övriga kommentarer
+Systemet exekverar och slutför sin uppgift utan krascher. När hela världen är upptäckt så övergår agenten till ett "idle-läge" där den roterar på plats tills användaren avslutar programmet.

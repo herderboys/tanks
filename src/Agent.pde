@@ -87,14 +87,24 @@ class Agent extends Thread {
               calculatePath(startNode, targetNode);
 
               tank.setState(4);
+              // don't mark edge of screen as unwalkable node
             } else if (hitStatic) {
-              if (sensedNode.isWalkable) {
-                // marking nodes containing a tree (static object) as unwalkable
-                // removes it from the search graph, preventing the heuristic
-                // algorithms from finding paths through it
-                sensedNode.isWalkable = false;
-                System.out.println("Mapped an unwalkable Node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+
+              // mark this node as explored so the tank stops trying to pathfind to wall
+              if (!sensedNode.isExplored) {
+                sensedNode.isExplored = true;
               }
+
+              // only mark as an unwalkable tree if it's inside the map boundaries
+              if (sensorX >= tank.diameter / 2 && sensorX < CANVAS_WIDTH && sensorY >= tank.diameter / 2 && sensorY < CANVAS_HEIGHT) {
+                if (sensedNode.isWalkable) {
+                  sensedNode.isWalkable = false;
+                  System.out.println("Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+                }
+              }
+
+              // always clear path and turn away from the obstacle (whether tree or wall)
+              currentPath.clear();
               tank.turn(random((float)Math.PI / 2, (float)Math.PI));
             } else {
               // if we have no current path, find nearest unexplored node
@@ -105,13 +115,44 @@ class Agent extends Thread {
                   boolean pathFound = calculatePath(start, target);
 
                   if (pathFound) {
-                    println("Path to base found! Following it.");
+                    println("Path to unexplored node found! Following it.");
                   } else {
-                    println("No path to base! Staying in patrol mode.");
+                    println("No path found! Turning randomly.");
+                    target.isExplored = true;
                     tank.turn(random(PI/2, PI));
                   }
                 } else {
                   tank.turn(random((float)Math.PI / 4, (float)Math.PI / 2));
+                }
+              } else {
+                Node currentNode = currentPath.get(0);
+                float distanceToNode = dist(pos.x, pos.y, currentNode.centerX, currentNode.centerY);
+
+                if (distanceToNode < 35) {
+                  currentPath.remove(0);
+                }
+
+                if (!currentPath.isEmpty()) {
+                  float deltaX = currentNode.centerX - pos.x;
+                  float deltaY = currentNode.centerY - pos.y;
+                  float desiredHeading = (float)Math.atan2(deltaY, deltaX);
+                  float currentHeading = tank.getHeading();
+
+                  float angleDiff = desiredHeading - currentHeading;
+                  angleDiff = (float)atan2(sin(angleDiff), cos(angleDiff));
+
+                  // if angle is small, snap to it
+                  if (abs(angleDiff) < tank.turnRate) {
+                    tank.setHeading(desiredHeading);
+                  } else {
+                    // otherwise, turn gently towards target
+                    if (angleDiff > 0) {
+                      tank.setHeading(currentHeading + tank.turnRate);
+                    } else {
+                      tank.setHeading(currentHeading - tank.turnRate);
+                    }
+                  }
+                  tank.setState(1);
                 }
               }
             }
@@ -119,7 +160,7 @@ class Agent extends Thread {
 
           // going back to base
           else if (tank.getState() == 4) {
-            println("Entering state 4.");
+            // println("Entering state 4.");
             if (atOwnBase) {
               println("Already at own base. Entering state 5.");
               tank.setState(5);
@@ -128,25 +169,42 @@ class Agent extends Thread {
 
 
             if (hitStatic) {
-              if (sensedNode.isWalkable) {
-                sensedNode.isWalkable = false;
+              // only mark as an unwalkable tree if it's inside the map boundaries
+              if (sensorX >= tank.diameter / 2 && sensorX < CANVAS_WIDTH && sensorY >= tank.diameter / 2 && sensorY < CANVAS_HEIGHT) {
+                if (sensedNode.isWalkable) {
+                  sensedNode.isWalkable = false;
+                  System.out.println("Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+                }
               }
 
-              // try to turn away from obstacle before recalculating
+              // clear path and try to turn away from obstacle before recalculating
+              currentPath.clear();
               tank.turn(random(PI, PI / 2));
+
               while (tank.getState() == 3) {
                 try {
                   sleep(10);
                 }
+
                 catch (InterruptedException e) {
                   e.printStackTrace();
                 }
               }
 
+              tank.setState(1);
+              try {
+                sleep(400);
+              }
+              catch (InterruptedException e) {
+              }
+
               println("Path blocked. Recalculating...");
-              tank.turn(random(PI / 4, PI / 2));
               tank.setState(4);
-              Node startNode = grid.getNodeFromPixels(pos.x, pos.y);
+
+              // get new pos now that tank has moved
+              PVector newPos = tank.getPosition();
+              Node startNode = grid.getNodeFromPixels(newPos.x, newPos.y);
+
               float targetX = team.baseX + (team.baseW / 2);
               float targetY = team.baseY + (team.baseH / 2);
               Node targetNode = grid.getNodeFromPixels(targetX, targetY);
@@ -250,9 +308,10 @@ class Agent extends Thread {
     }
   }
 
-  // A* and GBFS (depending on which algirithm is chosen)
+  // A* and GBFS (depending on which algorithm is chosen)
   boolean calculatePath(Node startNode, Node targetNode) {
     resetNodeCosts();
+
 
     Queue<Node> openSet = new PriorityQueue<Node>();
     HashSet<Node> closedSet = new HashSet<Node>();
@@ -272,6 +331,8 @@ class Agent extends Thread {
 
       if (currentNode == targetNode) {
         retracePath(startNode, targetNode);
+
+        println("Path length: " + currentPath.size());
         return true;
       }
 
@@ -282,12 +343,12 @@ class Agent extends Thread {
 
         /*
           A* evaluates notes using f(n) = g(n) + h(n), where it priotitizes
-          nodes with a lower f(n) value. g(n) is the cost of the taken path so far,
-          h(n) is the estimated path to the goal. This way, it goes in the right
-          direction because of the heuristic, and it remembers the path taken + how
-          much it cost to get there. It can also back out of dead ends because of it
-          tracking gCost.
-        */
+         nodes with a lower f(n) value. g(n) is the cost of the taken path so far,
+         h(n) is the estimated path to the goal. This way, it goes in the right
+         direction because of the heuristic, and it remembers the path taken + how
+         much it cost to get there. It can also back out of dead ends because of it
+         tracking gCost.
+         */
         if (selectedAlgorithm == 0 || selectedAlgorithm == 1) {
           // println("Using A* to find path home.");
           float newMovementCostToNeighbor = currentNode.gCost + getDistance(currentNode, neighbor);
@@ -307,13 +368,13 @@ class Agent extends Thread {
 
             openSet.add(neighbor);
           }
-        /*
+          /*
           Greedy Best-First Search (GBFS) evanluates nodes using
-          ONLY the heuristic f(n) = h(n). gCost is set equal to 0 here,
-          since it is never used. Therefore the algorithm has no memory
-          of the path taken so far, making it vulnerable/prone to getting
-          trapped against large "physical" obstacles.
-        */
+           ONLY the heuristic f(n) = h(n). gCost is set equal to 0 here,
+           since it is never used. Therefore the algorithm has no memory
+           of the path taken so far, making it vulnerable/prone to getting
+           trapped against large "physical" obstacles.
+           */
         } else if (selectedAlgorithm == 2) {
           // println("Using GBFS to find path home.");
           if (!openSet.contains(neighbor)) {
@@ -355,7 +416,8 @@ class Agent extends Thread {
       for (int j = 0; j < grid.rows; j++) {
         Node n = grid.nodes[i][j];
         if (!n.isExplored && n.isWalkable) {
-          float d = dist(pos.x, pos.y, n.centerX, n.centerY);
+          // make it more random which node it chooses
+          float d = dist(pos.x, pos.y, n.centerX, n.centerY) + random(0, 200);
           if (d < bestDist) {
             bestDist = d;
             best = n;
@@ -390,5 +452,11 @@ class Agent extends Thread {
 
   void setAlgorithm(int a) {
     selectedAlgorithm = a;
+  }
+
+  void displayGrid() {
+    if (grid != null) {
+      grid.display();
+    }
   }
 }
