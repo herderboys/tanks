@@ -1,6 +1,6 @@
 // Namn: Alexander Herder, alhe5785
 
-class Tree extends TankSprite {
+class TreeGR04 extends SpriteGR04 {
   
   PVector position;
   String  name; 
@@ -8,7 +8,7 @@ class Tree extends TankSprite {
   float   diameter;
   
   //**************************************************
-  Tree(PImage _image, int _posx, int _posy) {
+  TreeGR04(PImage _image, int _posx, int _posy) {
     
     this.img       = _image;
     this.diameter  = this.img.width/2;

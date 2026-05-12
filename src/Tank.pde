@@ -1,6 +1,6 @@
 // Namn: Alexander Herder, alhe5785
 
-class Tank extends TankSprite {
+class TankGR04 extends SpriteGR04 {
 
   PVector acceleration;
   PVector velocity;
@@ -11,6 +11,9 @@ class Tank extends TankSprite {
   PImage img;
   color col;
   float diameter;
+  int tankId;
+  int hp = 3;
+  long lastFiredTime = 0;
 
   float speed;
   float maxspeed;
@@ -18,17 +21,19 @@ class Tank extends TankSprite {
   float targetHeading;
   float turnRate = 0.05; // how fast tank rotates
 
-  Team team;
+  TeamGR04 team;
 
   int state;
   int previousState;
   boolean isInTransition;
+  boolean isDead = false;
 
   //======================================
-  Tank(String _name, PVector _startpos, float _size, Team team) {
+  TankGR04(String _name, int tankId, PVector _startpos, float _size, TeamGR04 team) {
     println("*** Tank.Tank()");
     this.name         = _name;
     this.diameter     = _size;
+    this.tankId       = tankId;
     this.col          = team.col;
 
     this.startpos     = new PVector(_startpos.x, _startpos.y);
@@ -52,8 +57,16 @@ class Tank extends TankSprite {
     return name;
   }
 
-  synchronized Team getTeam() {
+  synchronized TeamGR04 getTeam() {
     return team;
+  }
+
+  synchronized String getTeamName() {
+    return Integer.toString(team.getTeamIndex());
+  }
+
+  synchronized int getID() {
+    return tankId;
   }
 
   synchronized void setState(int newState) {
@@ -104,7 +117,7 @@ class Tank extends TankSprite {
       return true;
     }
 
-    for (Tree tree : allTrees) {
+    for (TreeGR04 tree : allTrees) {
       if (tree != null) {
         float dist = dist(checkX, checkY, tree.position.x, tree.position.y);
 
@@ -119,7 +132,7 @@ class Tank extends TankSprite {
   boolean isDynamicObstacleAt(float checkX, float checkY) {
     float radius = this.diameter / 2;
 
-    for (Tank tank : allTanks) {
+    for (TankGR04 tank : allTanks) {
       if (tank != null && !tank.equals(this)) {
         float dist = dist(checkX, checkY, tank.position.x, tank.position.y);
 
@@ -132,7 +145,7 @@ class Tank extends TankSprite {
     return false;
   }
 
-  void resolveCollisionWithTree(Tree tree) {
+  void resolveCollisionWithTree(TreeGR04 tree) {
     float treeRadius = tree.diameter / 2;
     float tankRadius = this.diameter / 2;
     float minSafeDistance = treeRadius + tankRadius;
@@ -157,7 +170,7 @@ class Tank extends TankSprite {
     }
   }
 
-  void resolveCollisionWithTank(Tank other) {
+  void resolveCollisionWithTank(TankGR04 other) {
     float tankRadius = this.diameter / 2;
     float minSafeDistance = tankRadius + tankRadius;
 
@@ -167,22 +180,38 @@ class Tank extends TankSprite {
     float d = dist(pos.x, pos.y, otherPos.x, otherPos.y);
 
     if (d < minSafeDistance && d > 0) {
-      // divide overlap by 2 so both tanks get pushed away by the same amount
-      float overlap = (minSafeDistance - d) / 2;
+      float overlap = minSafeDistance - d;
 
       float dx = (pos.x - otherPos.x) / d;
       float dy = (pos.y - otherPos.y) / d;
 
-      pos.x += dx * overlap;
-      pos.y += dy * overlap;
-      setPosition(pos.x, pos.y);
+      if (hp > 0 && other.hp > 0) {
+        // both tanks bounce back equally if both are alive
+        pos.x += dx * (overlap / 2);
+        pos.y += dy * (overlap / 2);
+        setPosition(pos.x, pos.y);
 
-      otherPos.x -= dx * overlap;
-      otherPos.y -= dy * overlap;
-      other.setPosition(otherPos.x, otherPos.y);
+        otherPos.x -= dx * (overlap / 2);
+        otherPos.y -= dy * (overlap / 2);
+        other.setPosition(otherPos.x, otherPos.y);
+      }
+
+      // if only this tank is alive, it absorbs the full bounce
+      else if (hp > 0) {
+        pos.x += dx * overlap;
+        pos.y += dy * overlap;
+        setPosition(pos.x, pos.y);
+      }
+
+      // same here as before but flipped
+      else if (other.hp > 0) {
+        otherPos.x -= dx * overlap;
+        otherPos.y -= dy * overlap;
+        other.setPosition(otherPos.x, otherPos.y);
+      }
     }
   }
-  
+
   void checkBoundaries(float maxWidth, float maxHeight) {
     float radius = this.diameter / 2;
 
@@ -192,6 +221,8 @@ class Tank extends TankSprite {
     if (pos.x + radius > maxWidth) pos.x = maxWidth - radius;
     if (pos.y - radius < 0) pos.y = radius;
     if (pos.y + radius > maxHeight) pos.y = maxHeight - radius;
+
+    setPosition(pos.x, pos.y);
   }
 
 
@@ -299,6 +330,13 @@ class Tank extends TankSprite {
   synchronized void update() {
     //    println("*** Tank.update()");
 
+    if (hp <= 0) {
+      if (isDead == false) {
+        isDead = true;
+        getTeam().activeTanks -= 1;
+      }
+      return; // dead tanks don't update
+    }
     switch (state) {
     case 0:
       // still/idle
@@ -319,6 +357,21 @@ class Tank extends TankSprite {
       action("back to base");
       moveForward();
       break;
+
+    case 5:
+      action("stop");
+      break;
+
+      // attack state
+    case 6:
+      action("stop");
+      break;
+    }
+
+    if (hp == 1) {
+      this.speed = 0;
+      this.velocity.x = 0;
+      this.velocity.y = 0;
     }
 
     this.position.add(velocity);
@@ -326,7 +379,14 @@ class Tank extends TankSprite {
 
   //======================================
   void drawTank(float x, float y) {
-    fill(this.col, 50);
+
+    if (hp == 2) fill(this.col, 150); // minor damage
+    else if (hp == 1) fill(50, 50, 50); // major damage
+    else if (hp <= 0) fill(0); // dead
+
+    else {
+      fill(this.col, 50);
+    }
 
     // turns oulines on, keeping them after rendering walked on nodes
     stroke(0);

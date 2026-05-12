@@ -1,0 +1,517 @@
+// Namn: Alexander Herder, alhe5785
+
+import java.util.*;
+
+class Agent extends Thread {
+  private Tank tank;
+  private Grid grid;
+  private Team team;
+
+  private int selectedAlgorithm;
+
+  // horizontal/vertical moves cost 1
+  final float ORTHOGONAL_COST = 1.0f;
+
+  // diagonal moves form a right triangle,
+  // so the cost is the hypotenuse (sqrt of 2)
+  final float DIAGONAL_COST = (float)Math.sqrt(2);
+
+  private long reportStartTime = 0;
+  private boolean isReporting = false;
+
+  List<Node> currentPath = new ArrayList<Node>();
+
+  // knowledge base of the agent
+  Set<String> beliefs = new HashSet<String>();
+
+  Agent(Tank tank) {
+    this.tank = tank;
+    this.team = tank.getTeam();
+    this.grid = new Grid();
+    this.selectedAlgorithm = 1;
+  }
+
+  void run() {
+    System.out.println("Agent thread started for " + tank.getName());
+
+    tank.setState(1);
+
+    // where did we see the enemy?
+    Node enemyMemory = null;
+
+    while (true) {
+      try {
+
+        PVector pos = tank.getPosition();
+        Node nodeTankIsStandingOn = grid.getNodeFromPixels(pos.x, pos.y);
+        boolean atOwnBase = (pos.x > team.baseX && pos.x < team.baseX+team.baseW &&
+          pos.y > team.baseY && pos.y < team.baseY+team.baseH);
+
+        if (!nodeTankIsStandingOn.isExplored) {
+          nodeTankIsStandingOn.isExplored = true;
+        }
+
+        float baseCenterX = team.baseX + (team.baseW / 2);
+        float baseCenterY = team.baseY + (team.baseH / 2);
+
+        synchronized(team) {
+          if (team.currentStrategy == 2) {
+            team.defenderId = 0;
+          } else if (team.currentStrategy == 1) {
+
+            // tank can't defend if its dead, someone else takes its place
+            if (tank.hp <= 0) {
+              if (team.defenderId == tank.getID()) {
+                team.defenderId = -1;
+                team.closestDefenderDistance = 100000;
+                println(tank.getName() + " died. No longer defender.");
+              }
+              break;
+            }
+
+            float myDist = dist(pos.x, pos.y, baseCenterX, baseCenterY);
+
+            if (team.defenderId == tank.getID()) {
+              team.closestDefenderDistance = myDist;
+            }
+
+            // - 50 prevents them from rapidly swapping roles if tanks drive next to each other
+            else if (myDist < team.closestDefenderDistance - 50) {
+              team.defenderId = tank.getID();
+              team.closestDefenderDistance = myDist;
+              println(tank.getName() + " is now the defender. Distance: " + myDist + ".");
+              currentPath.clear();
+            }
+          }
+        }
+
+        boolean isDefender = (team.defenderId == tank.getID());
+
+        // sensor phase
+        if (tank.getState() != 2 && tank.getState() != 5) {
+
+          // projecting sensor coordinates ahead of tank by treating its heading as an angle
+          // and the lookAhead distance as the hypotenuse. Multiplying lookAhead by cosine
+          // gives you the X-axis, and sine gives the Y-axis
+          float lookAhead = 50.0f;
+          float sensorX = pos.x + (float)Math.cos(tank.getHeading()) * lookAhead;
+          float sensorY = pos.y + (float)Math.sin(tank.getHeading()) * lookAhead;
+
+          Node sensedNode = grid.getNodeFromPixels(sensorX, sensorY);
+
+          boolean hitStatic = tank.isStaticObstacleAt(sensorX, sensorY);
+          boolean hitDynamic = tank.isDynamicObstacleAt(sensorX, sensorY);
+
+          Tank spottedEnemy = null;
+          float maxVisionRange = 300;
+
+          for (Tank t : allTanks) {
+            if (t != null && t.hp > 0 && t.team.teamIndex != tank.team.teamIndex) {
+
+              // if tank is within range
+              float d = dist(pos.x, pos.y, t.position.x, t.position.y);
+              if (d < maxVisionRange) {
+                // get angle to target
+                float deltaX = t.position.x - pos.x;
+                float deltaY = t.position.y - pos.y;
+                float targetAngle = atan2(deltaY, deltaX);
+
+                // diff between tank heading and target angle
+                float angleDiff = targetAngle - tank.getHeading();
+
+                // normalize angle, from:
+                // https://stackoverflow.com/questions/2320986/easy-way-to-keeping-angles-between-179-and-180-degrees)
+                angleDiff = atan2(sin(angleDiff), cos(angleDiff));
+
+                // if target is within 45 degrees of tank center line
+                if (abs(angleDiff) < PI / 4) {
+                  if (lineOfSightClear(pos, t.position)) {
+                    spottedEnemy = t;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          // update knowledge base
+          boolean enemyInBase = false;
+          if (spottedEnemy != null) {
+            float enemyBaseX = (team.teamIndex == 0) ? CANVAS_WIDTH - 151 : 0;
+            float enemyBaseY = (team.teamIndex == 0) ? CANVAS_HEIGHT - 351: 0;
+            enemyInBase = (pos.x > enemyBaseX && pos.x < enemyBaseX + 150 && pos.y > enemyBaseY && pos.y < enemyBaseY + 350);
+          }
+
+          updateBeliefs(spottedEnemy != null, enemyInBase, hitStatic || hitDynamic);
+
+
+          int deducedState = deduceNextState();
+
+          if (deducedState == 7) {
+            currentPath.clear();
+            tank.setHeading(tank.getHeading() + tank.turnRate);
+          } else if (deducedState == -1) {
+            if (hitStatic) {
+              if (sensorX >= tank.diameter / 2 && sensorX < CANVAS_WIDTH && sensorY >= tank.diameter / 2 && sensorY < CANVAS_HEIGHT) {
+                if (sensedNode.isWalkable) {
+                  sensedNode.isWalkable = false;
+                  System.out.println("Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+                }
+              }
+            }
+            currentPath.clear();
+            tank.turn(random((float)Math.PI / 2, (float)Math.PI));
+          } else if (deducedState == 6) {
+            currentPath.clear();
+            tank.setState(6);
+
+            float deltaX = spottedEnemy.position.x - pos.x;
+            float deltaY = spottedEnemy.position.y - pos.y;
+            float targetAngle = atan2(deltaY, deltaX);
+            float angleDiff = targetAngle - tank.getHeading();
+            angleDiff = atan2(sin(angleDiff), cos(angleDiff));
+
+            if (abs(angleDiff) > tank.turnRate) {
+              if (angleDiff > 0) tank.setHeading(tank.getHeading() + tank.turnRate);
+              else tank.setHeading(tank.getHeading() - tank.turnRate);
+            }
+
+            if (abs(angleDiff) < 0.1 && System.currentTimeMillis() - tank.lastFiredTime >= 3000) {
+              projectiles.add(new Projectile(pos, tank.getHeading(), tank.getTeam()));
+              tank.lastFiredTime = System.currentTimeMillis();
+            }
+          } else if (deducedState == 1 || deducedState == 4) {
+            tank.setState(deducedState);
+
+            if (currentPath.isEmpty()) {
+              if (deducedState == 4) {
+                Node start = grid.getNodeFromPixels(pos.x, pos.y);
+                Node targetNode = grid.getNodeFromPixels(baseCenterX, baseCenterY);
+                calculatePath(start, targetNode);
+              } else {
+                Node target = findNearestUnexplored();
+                if (target != null) {
+                  Node start = grid.getNodeFromPixels(pos.x, pos.y);
+                  boolean pathFound = calculatePath(start, target);
+
+                  if (pathFound) {
+                    println("Path to unexplored node found! Following it.");
+                  } else {
+                    println("No path found! Turning randomly.");
+                    target.isExplored = true;
+                    tank.turn(random(PI/2, PI));
+                  }
+                } else {
+                  tank.turn(random((float)Math.PI / 4, (float)Math.PI / 2));
+                }
+              }
+            } else {
+              Node currentNode = currentPath.get(0);
+              float distanceToNode = dist(pos.x, pos.y, currentNode.centerX, currentNode.centerY);
+
+              if (distanceToNode < 35) {
+                currentPath.remove(0);
+              }
+
+              if (!currentPath.isEmpty()) {
+                Node targetNode = currentPath.get(0);
+                float deltaX = targetNode.centerX - pos.x;
+                float deltaY = targetNode.centerY - pos.y;
+                float desiredHeading = (float)Math.atan2(deltaY, deltaX);
+                float currentHeading = tank.getHeading();
+
+                float angleDiff = desiredHeading - currentHeading;
+                angleDiff = (float)atan2(sin(angleDiff), cos(angleDiff));
+
+                // smooth steering
+                if (abs(angleDiff) < tank.turnRate) {
+                  tank.setHeading(desiredHeading);
+                } else {
+                  if (angleDiff > 0) {
+                    tank.setHeading(currentHeading + tank.turnRate);
+                  } else {
+                    tank.setHeading(currentHeading - tank.turnRate);
+                  }
+                }
+              } else if (atOwnBase) {
+                tank.setState(5);
+              }
+            }
+          }
+
+          if (tank.getState() == 5) {
+            if (!isReporting) {
+              tank.action("stop");
+              println("Arrived at base. Reporting enemy... (3 seconds)");
+
+              isReporting = true;
+              reportStartTime = System.currentTimeMillis();
+            }
+
+            if (System.currentTimeMillis() - reportStartTime >= 3000) {
+              if (enemyMemory != null) {
+                enemyMemory.isWalkable = false;
+                println("Memory updated. Resuming patrol.");
+                isReporting = false;
+                enemyMemory = null;
+              }
+              // turn around so we don't drive into wall
+              tank.turn((float)Math.PI);
+
+              // pause brain while rotating
+              while (tank.getState() == 3) {
+                Thread.sleep(10);
+              }
+
+              tank.setState(1);
+            }
+          }
+          // avoiding 100% cpu
+          Thread.sleep(1);
+        }
+      }
+      catch (Exception e) {
+        System.err.println("Agent thread crashed: " + e.getMessage());
+      }
+    }
+  }
+
+  // A* and GBFS (depending on which algorithm is chosen)
+  boolean calculatePath(Node startNode, Node targetNode) {
+    resetNodeCosts();
+
+
+    Queue<Node> openSet = new PriorityQueue<Node>();
+    HashSet<Node> closedSet = new HashSet<Node>();
+
+    startNode.gCost = 0;
+    startNode.hCost = getDistance(startNode, targetNode);
+
+    openSet.add(startNode);
+
+    while (!openSet.isEmpty()) {
+
+      // find node with lowest f cost
+      Node currentNode = openSet.poll();
+      if (!closedSet.add(currentNode)) {
+        continue;
+      }
+
+      if (currentNode == targetNode) {
+        retracePath(startNode, targetNode);
+
+        println("Path length: " + currentPath.size());
+        return true;
+      }
+
+      for (Node neighbor : grid.getNeighbors(currentNode)) {
+        if (!neighbor.isWalkable || closedSet.contains(neighbor)) {
+          continue;
+        }
+
+        // check if neighbor node contains dead tank
+        boolean nodeHasDeadTank = false;
+        for (Tank t : allTanks) {
+          if (t != null && t.hp <= 0) {
+            float distToDeadTank = dist(neighbor.centerX, neighbor.centerY, t.position.x, t.position.y);
+            if (distToDeadTank < t.diameter) {
+              nodeHasDeadTank = true;
+              break;
+            }
+          }
+        }
+
+        // skip neighbor if it has dead tank
+        if (nodeHasDeadTank) {
+          continue;
+        }
+
+        /*
+          A* evaluates notes using f(n) = g(n) + h(n), where it priotitizes
+         nodes with a lower f(n) value. g(n) is the cost of the taken path so far,
+         h(n) is the estimated path to the goal. This way, it goes in the right
+         direction because of the heuristic, and it remembers the path taken + how
+         much it cost to get there. It can also back out of dead ends because of it
+         tracking gCost.
+         */
+        if (selectedAlgorithm == 0 || selectedAlgorithm == 1) {
+          // println("Using A* to find path home.");
+          float newMovementCostToNeighbor = currentNode.gCost + getDistance(currentNode, neighbor);
+
+          if (newMovementCostToNeighbor < neighbor.gCost || !openSet.contains(neighbor)) {
+
+            if (openSet.contains(neighbor)) {
+              // removing node before modifying its values
+              // to ensure the queue re-sorts priority based on
+              // new fCost. This is because PriorityQueue doesn't
+              // automatically re-sort when values change
+              openSet.remove(neighbor);
+            }
+            neighbor.gCost = newMovementCostToNeighbor;
+            neighbor.hCost = getDistance(neighbor, targetNode);
+            neighbor.parent = currentNode;
+
+            openSet.add(neighbor);
+          }
+          /*
+          Greedy Best-First Search (GBFS) evanluates nodes using
+           ONLY the heuristic f(n) = h(n). gCost is set equal to 0 here,
+           since it is never used. Therefore the algorithm has no memory
+           of the path taken so far, making it vulnerable/prone to getting
+           trapped against large "physical" obstacles.
+           */
+        } else if (selectedAlgorithm == 2) {
+          // println("Using GBFS to find path home.");
+          if (!openSet.contains(neighbor)) {
+            neighbor.gCost = 0; // nullify distance from start
+            neighbor.hCost = getDistance(neighbor, targetNode);
+            neighbor.parent = currentNode;
+            openSet.add(neighbor);
+          }
+        }
+      }
+    }
+    currentPath.clear();
+    return false;
+  }
+
+  void retracePath(Node startNode, Node endNode) {
+    List<Node> path = new ArrayList<Node>();
+    Node currentNode = endNode;
+
+    // trace backwards from target to start
+    while (currentNode != startNode && currentNode != null) {
+      path.add(currentNode);
+      currentNode = currentNode.parent;
+    }
+    // reverse path so it goes from start to target
+    List<Node> reversedPath = new ArrayList<Node>();
+    for (int i = path.size() - 1; i >= 0; i--) {
+      reversedPath.add(path.get(i));
+    }
+    this.currentPath = reversedPath;
+  }
+
+  Node findNearestUnexplored() {
+    Node best = null;
+    float bestDist = Float.MAX_VALUE;
+    PVector pos = tank.getPosition();
+
+    for (int i = 0; i < grid.cols; i++) {
+      for (int j = 0; j < grid.rows; j++) {
+        Node n = grid.nodes[i][j];
+        if (!n.isExplored && n.isWalkable) {
+          // make it more random which node it chooses
+          float d = dist(pos.x, pos.y, n.centerX, n.centerY) + random(0, 200);
+          if (d < bestDist) {
+            bestDist = d;
+            best = n;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  void resetNodeCosts() {
+    for (int i = 0; i < grid.cols; i++) {
+      for (int j = 0; j < grid.rows; j++) {
+        Node n = grid.nodes[i][j];
+        n.gCost = Float.MAX_VALUE;
+        n.hCost = 0;
+        n.parent = null;
+      }
+    }
+  }
+
+
+  float getDistance(Node nodeA, Node nodeB) {
+    float distX = Math.abs(nodeA.gridX - nodeB.gridX);
+    float distY = Math.abs(nodeA.gridY - nodeB.gridY);
+
+    if (distX > distY) {
+      return DIAGONAL_COST * distY + ORTHOGONAL_COST * (distX - distY);
+    }
+    return DIAGONAL_COST * distX + ORTHOGONAL_COST * (distY - distX);
+  }
+
+  boolean lineOfSightClear(PVector start, PVector target) {
+    float d = dist(start.x, start.y, target.x, target.y);
+    int steps = (int)d / 10; // check every 10 pixels
+
+    for (int i = 0; i < steps; i++) {
+      // using linear interpolation to calculate exact x/y coordinate along the line
+      // https://en.wikipedia.org/wiki/Linear_interpolation
+      float checkX = lerp(start.x, target.x, (float)i / steps);
+      float checkY = lerp(start.y, target.y, (float)i / steps);
+
+      for (Tree tree : allTrees) {
+        if (tree != null) {
+          // if sight line is inside tree radius, path/sight is blocked
+          if (dist(checkX, checkY, tree.position.x, tree.position.y) < tree.diameter / 2) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  void setAlgorithm(int a) {
+    selectedAlgorithm = a;
+  }
+
+  void displayGrid() {
+    if (grid != null) {
+      grid.display();
+    }
+  }
+
+
+  // inference engine methods
+  void updateBeliefs(boolean seesEnemy, boolean enemyInBase, boolean hitWall) {
+    beliefs.clear(); // clear old facts
+
+    // facts based on beliefs
+    if (tank.hp == 1) beliefs.add("CRITICAL_DAMAGE");
+    if (tank.hp > 1)  beliefs.add("ENGINE_FUNCTIONAL");
+    if (seesEnemy)    beliefs.add("ENEMY_VISIBLE");
+    if (enemyInBase)  beliefs.add("BASE_UNDER_ATTACK");
+    if (hitWall)      beliefs.add("PATH_BLOCKED");
+    if (currentPath.isEmpty()) beliefs.add("NEEDS_PATH");
+    if (tank.getState() == 3) beliefs.add("IS_TURNING");
+
+    // collaborative knowledge
+    synchronized(team) {
+      if (team.defenderId == tank.getID()) beliefs.add("I_AM_DEFENDER");
+    }
+  }
+
+  int deduceNextState() {
+    if (beliefs.contains("IS_TURNING")) {
+      return 3;
+    }
+
+    // if CRITICAL_DAMAGE, becomes turret (state 7)
+    if (beliefs.contains("CRITICAL_DAMAGE")) {
+      return 7;
+    }
+
+    // attack
+    if (beliefs.contains("ENEMY_VISIBLE") && beliefs.contains("ENGINE_FUNCTIONAL")) {
+      return 6;
+    }
+
+    if (beliefs.contains("PATH_BLOCKED") && beliefs.contains("ENGINE_FUNCTIONAL")) {
+      // using -1 as trigger to clear path and turn
+      return -1;
+    }
+
+    if (beliefs.contains("BASE_UNDER_ATTACK") && beliefs.contains("I_AM_DEFENDER")) {
+      // go home and defend
+      return 4;
+    }
+    // default is patrolling
+    return 1;
+  }
+}

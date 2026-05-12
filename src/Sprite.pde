@@ -1,8 +1,8 @@
 // Namn: Alexander Herder, alhe5785
 
-class TankSprite {
+class SpriteGR04 {
 
-  void checkForCollisions(TankSprite other) {
+  void checkForCollisions(SpriteGR04 other) {
   }
 
   void checkForCollisions(PVector other) {

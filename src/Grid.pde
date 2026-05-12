@@ -1,17 +1,17 @@
 // Namn: Alexander Herder, alhe5785
 
-class Grid {
+class GridGR04 {
   final int GRID_LENGTH = 800;
   final int NODE_SIDE_LENGTH = 50;
   final int ROWS_COLS_AMOUNT = GRID_LENGTH / NODE_SIDE_LENGTH;
   int rows = ROWS_COLS_AMOUNT;
   int cols = ROWS_COLS_AMOUNT;
-  Node[][] nodes = new Node[cols][rows];
+  NodeGR04[][] nodes = new NodeGR04[cols][rows];
 
-  Grid() {
+  GridGR04() {
     for (int col = 0; col < nodes.length; col++) {
       for (int row = 0; row < nodes[col].length; row++) {
-        Node node = new Node(col, row);
+        NodeGR04 node = new NodeGR04(col, row);
         nodes[col][row] = node;
 
         int centerX = (NODE_SIDE_LENGTH * col) + (NODE_SIDE_LENGTH / 2);
@@ -22,7 +22,7 @@ class Grid {
     }
   }
 
-  synchronized Node getNodeFromPixels(float physicalX, float physicalY) {
+  synchronized NodeGR04 getNodeFromPixels(float physicalX, float physicalY) {
     int nodeCol = (int)physicalX / NODE_SIDE_LENGTH;
     int nodeRow = (int)physicalY / NODE_SIDE_LENGTH;
 
@@ -34,8 +34,8 @@ class Grid {
     return nodes[nodeCol][nodeRow];
   }
 
-  synchronized ArrayList<Node> getNeighbors(Node node) {
-    ArrayList<Node> neighbors = new ArrayList<Node>();
+  synchronized ArrayList<NodeGR04> getNeighbors(NodeGR04 node) {
+    ArrayList<NodeGR04> neighbors = new ArrayList<NodeGR04>();
 
     for (int x = -1; x <= 1; x++) {
       for (int y = -1; y <= 1; y++) {
@@ -55,7 +55,7 @@ class Grid {
   void display() {
     for (int i = 0; i < cols; i++) {
       for (int j = 0; j < rows; j++) {
-        Node n = nodes[i][j];
+        NodeGR04 n = nodes[i][j];
 
         if (n.isExplored && n.isWalkable) {
           // transparent green

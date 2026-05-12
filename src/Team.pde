@@ -1,9 +1,15 @@
 // Namn: Alexander Herder, alhe5785
 
-class Team {
+class TeamGR04 {
 
   int teamIndex;
   color col;
+  int defenderId = -1; // who is currently defending?
+  int currentStrategy = 1; // 1 = Utility Based Autonomous Allocation (default),
+                           // 2 = Hardcoded Role Allocation
+  float closestDefenderDistance = 100000; // score to determine who is defending
+  PVector knownEnemyPos = null; // where did we last see an enemy?
+  int activeTanks;
   
   float baseX;
   float baseY;
@@ -13,10 +19,12 @@ class Team {
   PVector tank0_startpos;
   PVector tank1_startpos;
   PVector tank2_startpos;
+
+  boolean shareIntel = true;
   
   // 0 = red (friendly)
   // 1 = blue (enemy)
-  Team(int teamIndex) {
+  TeamGR04(int teamIndex) {
     this.teamIndex = teamIndex;
 
 
@@ -44,6 +52,14 @@ class Team {
         tank1_startpos  = new PVector(width-50, height-150);
         tank2_startpos  = new PVector(width-50, height-50);
       }
+  }
+
+  void setStrategy(int strat) {
+    currentStrategy = strat;
+  }
+
+  int getTeamIndex() {
+    return teamIndex;
   }
 
 

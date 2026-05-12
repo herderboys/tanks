@@ -2,10 +2,10 @@
 
 import java.util.*;
 
-class AgentGR04 extends Thread {
-  private TankGR04 tank;
-  private GridGR04 grid;
-  private TeamGR04 team;
+class Agent extends Thread {
+  private Tank tank;
+  private Grid grid;
+  private Team team;
 
   private int selectedAlgorithm;
 
@@ -19,53 +19,33 @@ class AgentGR04 extends Thread {
   private long reportStartTime = 0;
   private boolean isReporting = false;
 
-
-  private long waitStartTime = 0;
-  private boolean isWaiting = false;
-
-  List<NodeGR04> currentPath = new ArrayList<NodeGR04>();
+  List<Node> currentPath = new ArrayList<Node>();
 
   // knowledge base of the agent
   Set<String> beliefs = new HashSet<String>();
 
-  AgentGR04(TankGR04 tank) {
+  Agent(Tank tank) {
     this.tank = tank;
     this.team = tank.getTeam();
-    this.grid = new GridGR04();
+    this.grid = new Grid();
     this.selectedAlgorithm = 1;
-    tank.getTeam().activeTanks++;
-
-    // "explore" home base before agent moves, it should know what nodes are in its home base
-    for (int i = 0; i < grid.cols; i++) {
-      for (int j = 0; j < grid.rows; j++) {
-
-        NodeGR04 n = grid.nodes[i][j];
-
-        if (n.centerX >= team.baseX && n.centerX <= team.baseX + team.baseW &&
-          n.centerY >= team.baseY && n.centerY <= team.baseY + team.baseH) {
-          n.isExplored = true;
-          n.isHomeBase = true;
-        }
-      }
-    }
   }
 
   void run() {
-    System.out.println(tank.getName() + " from team " + tank.getTeamName() + ": Agent thread started for " + tank.getName());
+    System.out.println("Agent thread started for " + tank.getName());
 
     tank.setState(1);
 
     // where did we see the enemy?
-    NodeGR04 enemyMemory = null;
+    Node enemyMemory = null;
 
     while (true) {
       try {
 
         PVector pos = tank.getPosition();
-        float r = tank.diameter / 2;
-        NodeGR04 nodeTankIsStandingOn = grid.getNodeFromPixels(pos.x, pos.y);
-        boolean atOwnBase = (pos.x - r >= team.baseX && pos.x + r <= team.baseX + team.baseW &&
-          pos.y - r >= team.baseY && pos.y + r <= team.baseY + team.baseH);
+        Node nodeTankIsStandingOn = grid.getNodeFromPixels(pos.x, pos.y);
+        boolean atOwnBase = (pos.x > team.baseX && pos.x < team.baseX+team.baseW &&
+          pos.y > team.baseY && pos.y < team.baseY+team.baseH);
 
         if (!nodeTankIsStandingOn.isExplored) {
           nodeTankIsStandingOn.isExplored = true;
@@ -76,21 +56,7 @@ class AgentGR04 extends Thread {
 
         synchronized(team) {
           if (team.currentStrategy == 2) {
-            // team 0 starts at 0, team 1 starts at 3
-            if (tank.hp <= 0) {
-              break;
-            } else {
-              int offset = (team.teamIndex == 0) ? 0 : 3;
-              if (allTanks[offset] != null && allTanks[offset].hp > 0) {
-                team.defenderId = allTanks[offset].getID();
-              } else if (allTanks[offset + 1] != null && allTanks[offset + 1].hp > 0) {
-                team.defenderId = allTanks[offset + 1].getID();
-              } else if (allTanks[offset + 2] != null && allTanks[offset + 2].hp > 0) {
-                team.defenderId = allTanks[offset + 2].getID();
-              } else {
-                team.defenderId = -1;
-              }
-            }
+            team.defenderId = 0;
           } else if (team.currentStrategy == 1) {
 
             // tank can't defend if its dead, someone else takes its place
@@ -98,27 +64,22 @@ class AgentGR04 extends Thread {
               if (team.defenderId == tank.getID()) {
                 team.defenderId = -1;
                 team.closestDefenderDistance = 100000;
-                println(tank.getName() + " from team " + tank.getTeamName() + " died. No longer defender.");
+                println(tank.getName() + " died. No longer defender.");
               }
               break;
             }
 
             float myDist = dist(pos.x, pos.y, baseCenterX, baseCenterY);
 
-            if (tank.getTeam().activeTanks == 1 && tank.getTeam().defenderId == tank.getID()) {
-              // no defender if tank is only one left
-              team.defenderId = -1;
-              team.closestDefenderDistance = 10000;
-              println(tank.getName() + " from team " + tank.getTeamName() + " is only tank left. Revoking defender status.");
-            } else if (team.defenderId == tank.getID() && team.activeTanks != 1) {
+            if (team.defenderId == tank.getID()) {
               team.closestDefenderDistance = myDist;
             }
 
             // - 50 prevents them from rapidly swapping roles if tanks drive next to each other
-            else if (myDist < team.closestDefenderDistance - 50 && team.activeTanks != 1) {
+            else if (myDist < team.closestDefenderDistance - 50) {
               team.defenderId = tank.getID();
               team.closestDefenderDistance = myDist;
-              println(tank.getName() + " from team " + tank.getTeamName() + " is now the defender. Distance: " + myDist + ".");
+              println(tank.getName() + " is now the defender. Distance: " + myDist + ".");
               currentPath.clear();
             }
           }
@@ -133,30 +94,18 @@ class AgentGR04 extends Thread {
           // and the lookAhead distance as the hypotenuse. Multiplying lookAhead by cosine
           // gives you the X-axis, and sine gives the Y-axis
           float lookAhead = 50.0f;
+          float sensorX = pos.x + (float)Math.cos(tank.getHeading()) * lookAhead;
+          float sensorY = pos.y + (float)Math.sin(tank.getHeading()) * lookAhead;
 
-          float activeAngle = tank.getHeading();
-
-          // override angle if tank is following a path
-          if (!currentPath.isEmpty()) {
-            NodeGR04 nextNode = currentPath.get(0);
-            float deltaX = nextNode.centerX - pos.x;
-            float deltaY = nextNode.centerY - pos.y;
-
-            activeAngle = atan2(deltaY, deltaX);
-          }
-
-          float sensorX = pos.x + (float)Math.cos(activeAngle) * lookAhead;
-          float sensorY = pos.y + (float)Math.sin(activeAngle) * lookAhead;
-
-          NodeGR04 sensedNode = grid.getNodeFromPixels(sensorX, sensorY);
+          Node sensedNode = grid.getNodeFromPixels(sensorX, sensorY);
 
           boolean hitStatic = tank.isStaticObstacleAt(sensorX, sensorY);
           boolean hitDynamic = tank.isDynamicObstacleAt(sensorX, sensorY);
 
-          TankGR04 spottedEnemy = null;
-          float maxVisionRange = 600; // should be able to see from across the field, 600 works well
+          Tank spottedEnemy = null;
+          float maxVisionRange = 300;
 
-          for (TankGR04 t : allTanks) {
+          for (Tank t : allTanks) {
             if (t != null && t.hp > 0 && t.team.teamIndex != tank.team.teamIndex) {
 
               // if tank is within range
@@ -185,23 +134,6 @@ class AgentGR04 extends Thread {
             }
           }
 
-          // updating knowledge base for team
-          boolean enemyInBase = false;
-          if (spottedEnemy != null) {
-            float enemyBaseX = (team.teamIndex == 0) ? CANVAS_WIDTH - 151 : 0;
-            float enemyBaseY = (team.teamIndex == 0) ? CANVAS_HEIGHT - 351: 0;
-            enemyInBase = (pos.x > enemyBaseX && pos.x < enemyBaseX + 150 && pos.y > enemyBaseY && pos.y < enemyBaseY + 350);
-
-            // share enemy coordinate with rest of team
-            if (team.shareIntel) {
-              synchronized(team) {
-                team.knownEnemyPos = new PVector(spottedEnemy.position.x, spottedEnemy.position.y);
-              }
-            }
-          }
-
-          updateBeliefs(spottedEnemy != null, enemyInBase, hitStatic, hitDynamic);
-
           // patrolling state
           if (tank.getState() == 1 || tank.getState() == 6) {
             // calculating enemy base boundaries
@@ -213,21 +145,21 @@ class AgentGR04 extends Thread {
             boolean insideEnemyBase = (pos.x > enemyBaseX && pos.x < enemyBaseX + enemyBaseW &&
               pos.y > enemyBaseY && pos.y < enemyBaseY + enemyBaseH);
 
-            if (beliefs.contains("BASE_UNDER_ATTACK") && beliefs.contains("I_AM_DEFENDER")) {
-              println(tank.getName() + " from team " + tank.getTeamName() + ": Enemy spotted inside base! Calculating path home.");
+            if (spottedEnemy != null && insideEnemyBase) {
+              println("Enemy spotted inside base! Calculating path home.");
 
               enemyMemory = grid.getNodeFromPixels(spottedEnemy.position.x, spottedEnemy.position.y);
 
-              NodeGR04 startNode = grid.getNodeFromPixels(pos.x, pos.y);
+              Node startNode = grid.getNodeFromPixels(pos.x, pos.y);
               float targetX = team.baseX + (team.baseW / 2);
               float targetY = team.baseY + (team.baseH / 2);
-              NodeGR04 targetNode = grid.getNodeFromPixels(targetX, targetY);
+              Node targetNode = grid.getNodeFromPixels(targetX, targetY);
 
               calculatePath(startNode, targetNode);
 
               tank.setState(4);
               // don't mark edge of screen as unwalkable node
-            } else if (beliefs.contains("STATIC_OBSTACLE")) {
+            } else if (hitStatic) {
 
               // mark this node as explored so the tank stops trying to pathfind to wall
               if (!sensedNode.isExplored) {
@@ -238,25 +170,14 @@ class AgentGR04 extends Thread {
               if (sensorX >= tank.diameter / 2 && sensorX < CANVAS_WIDTH && sensorY >= tank.diameter / 2 && sensorY < CANVAS_HEIGHT) {
                 if (sensedNode.isWalkable) {
                   sensedNode.isWalkable = false;
-                  System.out.println(tank.getName() + " from team " + tank.getTeamName() + ": Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+                  System.out.println("Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
                 }
               }
 
               // always clear path and turn away from the obstacle (whether tree or wall)
               currentPath.clear();
               tank.turn(random((float)Math.PI / 2, (float)Math.PI));
-              while (tank.getState() == 3) {
-                Thread.sleep(10);
-              }
-
-              // step forward a bit to break sensor lock
-              tank.setState(1);
-              try {
-                Thread.sleep(200);
-              }
-              catch (InterruptedException e) {
-              }
-            } else if (beliefs.contains("ENEMY_VISIBLE")) {
+            } else if (spottedEnemy != null) {
 
               // clear path and switch to attack state
               currentPath.clear();
@@ -278,60 +199,24 @@ class AgentGR04 extends Thread {
                 } else {
                   tank.setHeading(tank.getHeading() - tank.turnRate);
                 }
-              } else {
-                tank.setHeading(targetAngle);
               }
 
               // check so tank points roughly at enemy and cooldown is passed
-              float enemyRadius = spottedEnemy.diameter / 2;
-              float distToEnemy = dist(pos.x, pos.y, spottedEnemy.position.x, spottedEnemy.position.y);
-
-              // arcsine used to create perfect margin of error independent of distance to target.
-              // earlier it was hardcoded to 0.1 which created a margin of error at larger distances
-              if (abs(angleDiff) < asin(enemyRadius / distToEnemy) && System.currentTimeMillis() - tank.lastFiredTime >= 3000) {
-                projectiles.add(new ProjectileGR04(pos, tank.getHeading(), tank.getTeam()));
+              if (angleDiff < 0.1 && System.currentTimeMillis() - tank.lastFiredTime >= 3000) {
+                projectiles.add(new Projectile(pos, tank.getHeading(), tank.getTeam()));
                 tank.lastFiredTime = System.currentTimeMillis();
               }
-            } else if (beliefs.contains("DYNAMIC_OBSTACLE")) {
+            } else if (hitDynamic) {
               // saw dynamic obstacle but it's a friendly
-              // wait for other tank to move
-
-              if (!isWaiting) {
-                isWaiting = true;
-                waitStartTime = System.currentTimeMillis();
-              }
-
-              // halt tank while waiting for other tank to move
-              tank.action("stop");
-
-              // if 500ms has passed without any tank moving, break deadlock
-              if (System.currentTimeMillis() - waitStartTime >= 500) {
-                currentPath.clear();
-                tank.turn(random(PI / 2, PI));
-
-                while (tank.getState() == 3) {
-                  Thread.sleep(10);
-                }
-                isWaiting = false;
-                tank.setState(1);
-              }
+              currentPath.clear();
+              tank.turn(random(PI / 2, PI));
             } else {
 
-              isWaiting = false;
-              if (beliefs.contains("CRITICAL_DAMAGE")) {
+              if (tank.hp == 1) {
                 // don't navigate
                 currentPath.clear();
                 // spin until enemy is spotted
-                tank.turn((float)Math.PI / 4);
-                while (tank.getState() == 3) {
-                  try {
-                    Thread.sleep(10);
-                  }
-                  catch (InterruptedException e) {
-                  }
-                }
-                // bypass pathfinding
-                continue;
+                tank.setHeading(tank.getHeading() + tank.turnRate);
               } else if (tank.hp > 1) {
                 if (tank.getState() == 6) {
                   tank.setState(1);
@@ -343,68 +228,36 @@ class AgentGR04 extends Thread {
                 if (isDefender) {
                   if (!atOwnBase) {
                     // go home
-                    NodeGR04 start = grid.getNodeFromPixels(pos.x, pos.y);
-                    NodeGR04 targetNode = grid.getNodeFromPixels(baseCenterX, baseCenterY);
+                    Node start = grid.getNodeFromPixels(pos.x, pos.y);
+                    Node targetNode = grid.getNodeFromPixels(baseCenterX, baseCenterY);
                     calculatePath(start, targetNode);
                   } else {
                     // spin to scan
                     tank.turn(PI / 4);
-                    while (tank.getState() == 3) {
-                      Thread.sleep(10);
-                    }
                   }
                 } else {
 
-                  NodeGR04 target = null;
-
-                  // read and erase known enemy positions
-                  // only use shared knowledge base if team is allowed to share
-                  if (team.shareIntel) {
-                    synchronized(team) {
-                      if (team.knownEnemyPos != null) {
-                        // if close to reported position but no enemy is there, the intel is outdated and should be erased
-                        if (dist(pos.x, pos.y, team.knownEnemyPos.x, team.knownEnemyPos.y) < 100) {
-                          team.knownEnemyPos = null;
-                        } else {
-                          // otherwise, make reported position new target
-                          target = grid.getNodeFromPixels(team.knownEnemyPos.x, team.knownEnemyPos.y);
-                        }
-                      }
-                    }
-                  }
-
-                  if (target == null) {
-                    target = findNearestUnexplored();
-                    if (target == null) {
-                      target = getRandomWalkableNode();
-                    }
-                  }
+                  Node target = findNearestUnexplored();
                   if (target != null) {
-                    NodeGR04 start = grid.getNodeFromPixels(pos.x, pos.y);
+                    Node start = grid.getNodeFromPixels(pos.x, pos.y);
                     boolean pathFound = calculatePath(start, target);
 
                     if (pathFound) {
-                      println(tank.getName() + " from team " + tank.getTeamName() + ": Path to unexplored node found! Following it.");
+                      println("Path to unexplored node found! Following it.");
                     } else {
-                      println(tank.getName() + " from team " + tank.getTeamName() + ": No path found! Turning randomly.");
-                      // target.isExplored = true;
+                      println("No path found! Turning randomly.");
+                      target.isExplored = true;
                       tank.turn(random(PI/2, PI));
-                      while (tank.getState() == 3) {
-                        Thread.sleep(10);
-                      }
                     }
                   } else {
                     tank.turn(random((float)Math.PI / 4, (float)Math.PI / 2));
-                    while (tank.getState() == 3) {
-                      Thread.sleep(10);
-                    }
                   }
                 }
               } else {
-                NodeGR04 currentNode = currentPath.get(0);
+                Node currentNode = currentPath.get(0);
                 float distanceToNode = dist(pos.x, pos.y, currentNode.centerX, currentNode.centerY);
 
-                if (distanceToNode < 15) {
+                if (distanceToNode < 35) {
                   currentPath.remove(0);
                 }
 
@@ -438,18 +291,18 @@ class AgentGR04 extends Thread {
           else if (tank.getState() == 4) {
             // println("Entering state 4.");
             if (atOwnBase) {
-              println(tank.getName() + " from team " + tank.getTeamName() + ": Already at own base. Entering state 5.");
+              println("Already at own base. Entering state 5.");
               tank.setState(5);
               continue;
             }
 
 
-            if (beliefs.contains("STATIC_OBSTACLE")) {
+            if (hitStatic) {
               // only mark as an unwalkable tree if it's inside the map boundaries
               if (sensorX >= tank.diameter / 2 && sensorX < CANVAS_WIDTH && sensorY >= tank.diameter / 2 && sensorY < CANVAS_HEIGHT) {
                 if (sensedNode.isWalkable) {
                   sensedNode.isWalkable = false;
-                  System.out.println(tank.getName() + " from team " + tank.getTeamName() + ": Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
+                  System.out.println("Mapped an unwalkable tree node at coordinates [" + sensedNode.gridX + "][" + sensedNode.gridY + "]");
                 }
               }
 
@@ -474,21 +327,21 @@ class AgentGR04 extends Thread {
               catch (InterruptedException e) {
               }
 
-              println(tank.getName() + " from team " + tank.getTeamName() + ": Path blocked. Recalculating...");
+              println("Path blocked. Recalculating...");
               tank.setState(4);
 
               // get new pos now that tank has moved
               PVector newPos = tank.getPosition();
-              NodeGR04 startNode = grid.getNodeFromPixels(newPos.x, newPos.y);
+              Node startNode = grid.getNodeFromPixels(newPos.x, newPos.y);
 
               float targetX = team.baseX + (team.baseW / 2);
               float targetY = team.baseY + (team.baseH / 2);
-              NodeGR04 targetNode = grid.getNodeFromPixels(targetX, targetY);
+              Node targetNode = grid.getNodeFromPixels(targetX, targetY);
 
               boolean success = calculatePath(startNode, targetNode);
 
               if (!success) {
-                println(tank.getName() + " from team " + tank.getTeamName() + ": Can't find path to base, resuming patrol.");
+                println("Can't find path to base, resuming patrol.");
                 tank.setState(1);
                 currentPath.clear();
               }
@@ -496,7 +349,7 @@ class AgentGR04 extends Thread {
 
               if (!currentPath.isEmpty()) {
 
-                NodeGR04 currentNode = currentPath.get(0);
+                Node currentNode = currentPath.get(0);
 
                 float distanceToNode = dist(pos.x, pos.y, currentNode.centerX, currentNode.centerY);
 
@@ -534,13 +387,13 @@ class AgentGR04 extends Thread {
                 }
               } else if (currentPath.isEmpty()) {
                 // finished path, check if at base
-                println(tank.getName() + " from team " + tank.getTeamName() + ": Path empty. At own base: " + atOwnBase);
+                println("Path empty. At own base: " + atOwnBase);
                 if (atOwnBase) {
-                  println(tank.getName() + " from team " + tank.getTeamName() + ": Entering state 5.");
+                  println("Entering state 5.");
                   tank.setState(5);
                 } else {
                   // path ended but not at base, resume patrol
-                  println(tank.getName() + " from team " + tank.getTeamName() + ": Not at base. Resuming state 1.");
+                  println("Not at base. Resuming state 1.");
                   tank.setState(1);
                 }
               }
@@ -551,7 +404,7 @@ class AgentGR04 extends Thread {
         if (tank.getState() == 5) {
           if (!isReporting) {
             tank.action("stop");
-            println(tank.getName() + " from team " + tank.getTeamName() + ": Arrived at base. Reporting enemy... (3 seconds)");
+            println("Arrived at base. Reporting enemy... (3 seconds)");
 
             isReporting = true;
             reportStartTime = System.currentTimeMillis();
@@ -560,7 +413,7 @@ class AgentGR04 extends Thread {
           if (System.currentTimeMillis() - reportStartTime >= 3000) {
             if (enemyMemory != null) {
               enemyMemory.isWalkable = false;
-              println(tank.getName() + " from team " + tank.getTeamName() + ": Memory updated. Resuming patrol.");
+              println("Memory updated. Resuming patrol.");
               isReporting = false;
               enemyMemory = null;
             }
@@ -579,18 +432,18 @@ class AgentGR04 extends Thread {
         Thread.sleep(1);
       }
       catch (Exception e) {
-        System.err.println(tank.getName() + " from team " + tank.getTeamName() + ": Agent thread crashed: " + e.getMessage());
+        System.err.println("Agent thread crashed: " + e.getMessage());
       }
     }
   }
 
   // A* and GBFS (depending on which algorithm is chosen)
-  boolean calculatePath(NodeGR04 startNode, NodeGR04 targetNode) {
+  boolean calculatePath(Node startNode, Node targetNode) {
     resetNodeCosts();
 
 
-    Queue<NodeGR04> openSet = new PriorityQueue<NodeGR04>();
-    HashSet<NodeGR04> closedSet = new HashSet<NodeGR04>();
+    Queue<Node> openSet = new PriorityQueue<Node>();
+    HashSet<Node> closedSet = new HashSet<Node>();
 
     startNode.gCost = 0;
     startNode.hCost = getDistance(startNode, targetNode);
@@ -600,7 +453,7 @@ class AgentGR04 extends Thread {
     while (!openSet.isEmpty()) {
 
       // find node with lowest f cost
-      NodeGR04 currentNode = openSet.poll();
+      Node currentNode = openSet.poll();
       if (!closedSet.add(currentNode)) {
         continue;
       }
@@ -608,36 +461,31 @@ class AgentGR04 extends Thread {
       if (currentNode == targetNode) {
         retracePath(startNode, targetNode);
 
-        println(tank.getName() + " from team " + tank.getTeamName() + ": Path length: " + currentPath.size());
+        println("Path length: " + currentPath.size());
         return true;
       }
 
-      for (NodeGR04 neighbor : grid.getNeighbors(currentNode)) {
+      for (Node neighbor : grid.getNeighbors(currentNode)) {
         if (!neighbor.isWalkable || closedSet.contains(neighbor)) {
           continue;
         }
 
-        // this caused some weird behaviour, might fix later but works better commented out now
-
-        /*
         // check if neighbor node contains dead tank
-         boolean nodeHasDeadTank = false;
-         for (TankGR04 t : allTanks) {
-         if (t != null && t.hp <= 1) {
-         float distToDeadTank = dist(neighbor.centerX, neighbor.centerY, t.position.x, t.position.y);
-         // - 10 margin so that the tank doesn't ignore valid paths
-         if (distToDeadTank < t.diameter / 2 - 10) {
-         nodeHasDeadTank = true;
-         break;
-         }
-         }
-         }
-         
-         // skip neighbor if it has dead tank
-         if (nodeHasDeadTank) {
-         continue;
-         }
-         */
+        boolean nodeHasDeadTank = false;
+        for (Tank t : allTanks) {
+          if (t != null && t.hp <= 0) {
+            float distToDeadTank = dist(neighbor.centerX, neighbor.centerY, t.position.x, t.position.y);
+            if (distToDeadTank < t.diameter) {
+              nodeHasDeadTank = true;
+              break;
+            }
+          }
+        }
+
+        // skip neighbor if it has dead tank
+        if (nodeHasDeadTank) {
+          continue;
+        }
 
         /*
           A* evaluates notes using f(n) = g(n) + h(n), where it priotitizes
@@ -648,16 +496,8 @@ class AgentGR04 extends Thread {
          tracking gCost.
          */
         if (selectedAlgorithm == 0 || selectedAlgorithm == 1) {
-
-          // penalize using unexplored nodes
-          float explorationPenalty = 0;
-          if (!neighbor.isExplored) {
-            explorationPenalty = 50;
-          }
-
-
           // println("Using A* to find path home.");
-          float newMovementCostToNeighbor = currentNode.gCost + getDistance(currentNode, neighbor) + explorationPenalty;
+          float newMovementCostToNeighbor = currentNode.gCost + getDistance(currentNode, neighbor);
 
           if (newMovementCostToNeighbor < neighbor.gCost || !openSet.contains(neighbor)) {
 
@@ -672,13 +512,10 @@ class AgentGR04 extends Thread {
             neighbor.hCost = getDistance(neighbor, targetNode);
             neighbor.parent = currentNode;
 
-
-
-
             openSet.add(neighbor);
           }
           /*
-          Greedy Best-First Search (GBFS) evaluates nodes using
+          Greedy Best-First Search (GBFS) evanluates nodes using
            ONLY the heuristic f(n) = h(n). gCost is set equal to 0 here,
            since it is never used. Therefore the algorithm has no memory
            of the path taken so far, making it vulnerable/prone to getting
@@ -699,9 +536,9 @@ class AgentGR04 extends Thread {
     return false;
   }
 
-  void retracePath(NodeGR04 startNode, NodeGR04 endNode) {
-    List<NodeGR04> path = new ArrayList<NodeGR04>();
-    NodeGR04 currentNode = endNode;
+  void retracePath(Node startNode, Node endNode) {
+    List<Node> path = new ArrayList<Node>();
+    Node currentNode = endNode;
 
     // trace backwards from target to start
     while (currentNode != startNode && currentNode != null) {
@@ -709,37 +546,27 @@ class AgentGR04 extends Thread {
       currentNode = currentNode.parent;
     }
     // reverse path so it goes from start to target
-    List<NodeGR04> reversedPath = new ArrayList<NodeGR04>();
+    List<Node> reversedPath = new ArrayList<Node>();
     for (int i = path.size() - 1; i >= 0; i--) {
       reversedPath.add(path.get(i));
     }
     this.currentPath = reversedPath;
   }
 
-  NodeGR04 findNearestUnexplored() {
-    NodeGR04 best = null;
+  Node findNearestUnexplored() {
+    Node best = null;
     float bestDist = Float.MAX_VALUE;
     PVector pos = tank.getPosition();
 
     for (int i = 0; i < grid.cols; i++) {
       for (int j = 0; j < grid.rows; j++) {
-        NodeGR04 n = grid.nodes[i][j];
+        Node n = grid.nodes[i][j];
         if (!n.isExplored && n.isWalkable) {
-          // check if unknown is touching edge of known map
-          boolean isFrontier = false;
-          for (NodeGR04 neighbor : grid.getNeighbors(n)) {
-            if (neighbor.isExplored && neighbor.isWalkable) {
-              isFrontier = true;
-              break;
-            }
-          }
-          // if on frontier, check if it's closest one
-          if (isFrontier) {
-            float d = dist(pos.x, pos.y, n.centerX, n.centerY) + random(0, 150);
-            if (d < bestDist) {
-              bestDist = d;
-              best = n;
-            }
+          // make it more random which node it chooses
+          float d = dist(pos.x, pos.y, n.centerX, n.centerY) + random(0, 200);
+          if (d < bestDist) {
+            bestDist = d;
+            best = n;
           }
         }
       }
@@ -750,7 +577,7 @@ class AgentGR04 extends Thread {
   void resetNodeCosts() {
     for (int i = 0; i < grid.cols; i++) {
       for (int j = 0; j < grid.rows; j++) {
-        NodeGR04 n = grid.nodes[i][j];
+        Node n = grid.nodes[i][j];
         n.gCost = Float.MAX_VALUE;
         n.hCost = 0;
         n.parent = null;
@@ -759,7 +586,7 @@ class AgentGR04 extends Thread {
   }
 
 
-  float getDistance(NodeGR04 nodeA, NodeGR04 nodeB) {
+  float getDistance(Node nodeA, Node nodeB) {
     float distX = Math.abs(nodeA.gridX - nodeB.gridX);
     float distY = Math.abs(nodeA.gridY - nodeB.gridY);
 
@@ -779,27 +606,10 @@ class AgentGR04 extends Thread {
       float checkX = lerp(start.x, target.x, (float)i / steps);
       float checkY = lerp(start.y, target.y, (float)i / steps);
 
-      for (TreeGR04 tree : allTrees) {
+      for (Tree tree : allTrees) {
         if (tree != null) {
           // if sight line is inside tree radius, path/sight is blocked
           if (dist(checkX, checkY, tree.position.x, tree.position.y) < tree.diameter / 2) {
-            return false;
-          }
-        }
-      }
-      for (TankGR04 t : allTanks) {
-        if (t != null) {
-          // ignore tank doing the looking
-          if (t.getID() == tank.getID() && t.getTeam().teamIndex == tank.getTeam().teamIndex) {
-            continue;
-          }
-          // ignore tank we're aiming at
-          if (dist(t.position.x, t.position.y, target.x, target.y) < 1) {
-            continue;
-          }
-
-          // if it's any other tank, check if it blocks ray
-          if (dist(checkX, checkY, t.position.x, t.position.y) < t.diameter / 2) {
             return false;
           }
         }
@@ -820,7 +630,7 @@ class AgentGR04 extends Thread {
 
 
   // inference engine methods
-  void updateBeliefs(boolean seesEnemy, boolean enemyInBase, boolean hitStatic, boolean hitDynamic) {
+  void updateBeliefs(boolean seesEnemy, boolean enemyInBase, boolean hitWall) {
     beliefs.clear(); // clear old facts
 
     // facts based on beliefs
@@ -828,8 +638,8 @@ class AgentGR04 extends Thread {
     if (tank.hp > 1)  beliefs.add("ENGINE_FUNCTIONAL");
     if (seesEnemy)    beliefs.add("ENEMY_VISIBLE");
     if (enemyInBase)  beliefs.add("BASE_UNDER_ATTACK");
-    if (hitStatic)    beliefs.add("STATIC_OBSTACLE");
-    if (hitDynamic)   beliefs.add("DYNAMIC_OBSTACLE");
+    if (hitWall)      beliefs.add("PATH_BLOCKED");
+    if (currentPath.isEmpty()) beliefs.add("NEEDS_PATH");
 
     // collaborative knowledge
     synchronized(team) {
@@ -837,25 +647,27 @@ class AgentGR04 extends Thread {
     }
   }
 
-
-  NodeGR04 getRandomWalkableNode() {
-    List<NodeGR04> walkableNodes = new ArrayList<NodeGR04>();
-
-    for (int i = 0; i < grid.cols; i++) {
-      for (int j = 0; j < grid.rows; j++) {
-        NodeGR04 n = grid.nodes[i][j];
-        if (n.isWalkable) {
-          walkableNodes.add(n);
-        }
-      }
+  int deduceNextState() {
+    // if CRITICAL_DAMAGE, becomes turret (state 7)
+    if (beliefs.contains("CRITICAL_DAMAGE")) {
+      return 7;
     }
 
-    // in case the grid is entirely blocked
-    if (walkableNodes.isEmpty()) {
-      return null;
+    // attack
+    if (beliefs.contains("ENEMY_VISIBLE") && beliefs.contains("ENGINE_FUNCTIONAL")) {
+      return 6;
     }
-
-    int randomIndex = (int)(Math.random() * walkableNodes.size());
-    return walkableNodes.get(randomIndex);
+  
+    if (beliefs.contains("PATH_BLOCKED") && beliefs.contains("ENGINE_FUNCTIONAL")) {
+      // using -1 as trigger to clear path and turn
+      return -1;
+    }
+    
+    if (beliefs.contains("BASE_UNDER_ATTACK") && beliefs.contains("I_AM_DEFENDER")) {
+      // go home and defend
+      return 4;
+    }
+    // default is patrolling
+    return 1;
   }
 }

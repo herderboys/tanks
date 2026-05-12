@@ -1,23 +1,22 @@
-# Inlämningsuppgift 1
+# Inlämningsuppgift 2
 
 **Namn:** Alexander Herder, alhe5785 (Enmansgrupp)
 **Grupp:** 04
 **Kurs:** Artificiell Intelligens, AIVT2026, IB582N
 
 ## Projektbeskrivning
-Detta projekt är en visuell simulering av en autonom agent (en tank) som patrullerar en 2D-spelvärld. När agenten upptäcker en fiende med sina kamerasensorer, måste den räkna ut den kortaste och säkraste vägen (vägen med lägst antal hinder) tillbaka till sin hembas för att rapportera händelsen. 
+Detta projekt är en visuell simulering av ett multi-agentsystem där två lag av autonoma stridsvagnar (tanks) möts i en kompetitiv och partiellt observerbar miljö. Syftet med simuleringen är att undersöka och mäta hur explicit kommunikation påverkar lagets förmåga till koordination och totala nytta (utility).
+Simuleringen demonstrerar och jämför två olika AI-strategier för beslutsfattande:
 
-Simuleringen demonstrerar och jämför två olika heuristiska vägvalsagoritmer (pathfinding) för att hantera statiska hinder (träd):
-
-* **A\* (A-Star)**
-* **Greedy Best-First Search (GBFS)**
+* **Oberoende Knowledge-Based Agents** - Agenterna agerar helt isolerat utifrån sina egna sensorer och delar ingen information med sina lagkamrater.
+* **Kooperativ Multi-Agent Planning** - Agenterna använder en delad datastruktur för att kommunicera fiendepositioner och utföra koordinerade anfall med hjälp av modifierad A*-sökning.
 
 ## Krav och Förutsättningar
 Programmet är skrivet i Java och bygger på ramverket **Processing**. Inga externa tredjepartsbibliotek utöver Processing Core krävs.
 
 För att köra programmet behövs **Processing IDE**, alternativt en annan IDE med Processing installerat som ramverk. Används en annan IDE kan dock instruktionerna för testkörning inte garanteras att vara samma som nedan specificerat.
 
-Eftersom programmet körs via Processing är det plattformsoberoende och kan köras på Windows, Linux och Mac.
+Eftersom programmet körs via Processing är det plattformsoberoende och kan köras på Windows, Linux och macOS.
 
 ## Instruktioner för testkörning (Körbarhet)
 För att starta och testa systemet, följ dessa steg:
@@ -30,9 +29,11 @@ För att starta och testa systemet, följ dessa steg:
 ## Styrning och Interaktion
 När programmet startar är simuleringen **pausad**. Använd tangentbordet för att interagera med och styra AI-agentens logik:
 
-* **`1`** : Välj och starta sökning med **A\* (A-Star)**. Algoritmen tar hänsyn till både sträckans kostnad hittills ($g(n)$) och uppskattat avstånd till mål ($h(n)$). (Startar automatiskt simuleringen).
-* **`2`** : Välj och starta sökning med **Greedy Best-First Search (GBFS)**. Algoritmen navigerar enbart utifrån uppskattat avstånd till mål ($h(n)$). (Startar automatiskt simuleringen).
+* **`1`** : Starta simuleringen där lagen spelar asymmetriskt (Röda laget använder lokal kunskap, Blåa laget använder Shared Intel).
+* **`2`** : Starta simuleringen där lagen spelar symmetriskt (Båda lagen använder Shared Intel).
 * **`p`** : Pausa eller återuppta simuleringen manuellt.
 
 ## Övriga kommentarer
-Systemet exekverar och slutför sin uppgift utan krascher. När hela världen är upptäckt så övergår agenten till ett "idle-läge" där den roterar på plats tills användaren avslutar programmet.
+Simuleringen är inställd på att automatiskt avslutas efter 3 minuter (180 000 ms).
+
+Vid symmetriska möten (där båda lagen använder Shared Intel) är det förväntat att systemet ibland hamnar i ett defensivt dödläge där tanksen roterar i sina baser tills tiden rinner ut. Detta diskuteras i detalj i den bifogade dokumentationen.

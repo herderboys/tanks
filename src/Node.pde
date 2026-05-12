@@ -1,6 +1,6 @@
 // Namn: Alexander Herder, alhe5785
 
-class Node implements Comparable<Node> {
+class NodeGR04 implements Comparable<NodeGR04> {
   int gridX;
   int gridY;
   int centerX;
@@ -14,12 +14,13 @@ class Node implements Comparable<Node> {
   
   // f(n), the (heuristic) estimated cost from this node to the target node
   float hCost;
-  Node parent;
+  NodeGR04 parent;
 
-  Node(int gridX, int gridY) {
+  NodeGR04(int gridX, int gridY) {
     this.gridX = gridX;
     this.gridY = gridY;
     isWalkable = true;
+    isHomeBase = false;
   }
 
   void setCenter(int x, int y) {
@@ -33,7 +34,7 @@ class Node implements Comparable<Node> {
   }
 
   @Override
-  public int compareTo(Node other) {
+  public int compareTo(NodeGR04 other) {
     int compare = Float.compare(this.fCost(), other.fCost());
         // if f costs are tied, prioritize the node closer to the target (lower h cost)
         if (compare == 0) {
